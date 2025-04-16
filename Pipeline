@@ -1,0 +1,67 @@
+pipeline{
+    agent any
+    
+    stages{
+        stage('code'){
+            steps{
+                git branch: '$branch', url: 'https://github.com/chamawararyan/jenkins-java-project.git'
+            }
+        }
+        stage('build'){
+            steps{
+                sh 'mvn compile'
+            }
+        }
+        stage('test'){
+            steps{
+                sh 'mvn test'
+            }
+        }
+        stage('sonarqube'){
+            steps{
+                echo 'my code has passed sonarqube gate qualities'
+            }
+        }
+        stage('artifact'){
+            steps{
+                sh 'mvn clean package'
+            }
+        }
+        stage('s3'){
+            steps{
+                s3Upload consoleLogLevel: 'INFO', dontSetBuildResultOnFailure: false, dontWaitForConcurrentBuildCompletion: false, entries: [[bucket: 'artifactbucketfornetflix32343', excludedFile: '', flatten: false, gzipFiles: false, keepForever: false, managedArtifacts: false, noUploadOnFailure: false, selectedRegion: 'ap-south-1', showDirectlyInBrowser: false, sourceFile: 'target/NETFLIX-1.2.2.war', storageClass: 'STANDARD', uploadFromSlave: false, useServerSideEncryption: false]], pluginFailureResultConstraint: 'FAILURE', profileName: 'Aryan', userMetadata: []
+            }
+        }
+        stage('nexus'){
+            steps{
+                echo 'my artifact is stored on nexus'
+            }
+        }
+        stage('deploy'){
+            input{
+                message "is everything correct ? "
+                ok "yes"
+            }
+            steps{
+                deploy adapters: [
+                    tomcat9(credentialsId: 'e9285129-17d9-41d2-86ef-7d38df623567',path: '', url: 'http://65.0.130.123:8080/')
+                    ],
+                    contextPath: 'Netflix',
+                    war: 'target/*.war'
+            }
+        }
+    }
+    post {
+    always {
+        echo 'Slack Notification'
+        script {
+            slackSend(
+                channel: '#devopslearning',
+                message: "*${currentBuild.currentResult}:* Job ${env.JOB_NAME} \n build ${env.BUILD_NUMBER} \n More info at: ${env.BUILD_URL}"
+            )
+            def environmentVariables = sh(script: 'printenv', returnStdout: true).trim()
+            echo "Environment Variables:\n${environmentVariables}"
+        }
+    }
+}
+}
